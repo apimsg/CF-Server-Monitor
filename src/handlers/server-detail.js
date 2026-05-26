@@ -492,7 +492,7 @@ export async function handleServerDetail(request, env, sys, viewId) {
         ${server.name} — ssh
       </div>
       <div class="terminal-controls">
-        <span style="color: var(--text-muted);">${new Date().toLocaleString()}</span>
+        <span style="color: var(--text-muted);">${new Date().toLocaleString(undefined, { hour12: false })}</span>
       </div>
     </div>
     
@@ -559,6 +559,18 @@ export async function handleServerDetail(request, env, sys, viewId) {
         <div class="sysinfo-item">
           <span class="sysinfo-label">💿 Total Disk</span>
           <span class="sysinfo-value" id="val-disk-total">${(parseFloat(server.disk_total)/1024).toFixed(1)} GiB</span>
+        </div>
+        <div class="sysinfo-item">
+          <span class="sysinfo-label">🔽 Traffic In</span>
+          <span class="sysinfo-value" id="val-traffic-in">${formatBytes(server.monthly_rx)}</span>
+        </div>
+        <div class="sysinfo-item">
+          <span class="sysinfo-label">🔼 Traffic Out</span>
+          <span class="sysinfo-value" id="val-traffic-out">${formatBytes(server.monthly_tx)}</span>
+        </div>
+        <div class="sysinfo-item" style="grid-column: span 2;">
+          <span class="sysinfo-label">⏰ Last Report</span>
+          <span class="sysinfo-value" id="val-last-report">${new Date(serverLastUpdated).toLocaleString(undefined, { hour12: false })}</span>
         </div>
       </div>
     </div>
@@ -774,7 +786,8 @@ export async function handleServerDetail(request, env, sys, viewId) {
                   day: '2-digit',
                   hour: '2-digit',
                   minute: '2-digit',
-                  second: '2-digit'
+                  second: '2-digit',
+                  hour12: false
                 });
               }
               return '';
@@ -1163,6 +1176,11 @@ export async function handleServerDetail(request, env, sys, viewId) {
         document.getElementById('text-net-out').innerText = formatBytes(data.net_out_speed) + '/s';
         document.getElementById('text-tcp').innerText = data.tcp_conn || '0';
         document.getElementById('text-udp').innerText = data.udp_conn || '0';
+        
+        // 更新流量和最后上报时间
+        document.getElementById('val-traffic-in').innerText = formatBytes(data.monthly_rx);
+        document.getElementById('val-traffic-out').innerText = formatBytes(data.monthly_tx);
+        document.getElementById('val-last-report').innerText = new Date(lastUpdatedTime).toLocaleString(undefined, { hour12: false });
         
         document.getElementById('text-disk-detail').innerText = 
           \`Used \${(parseFloat(data.disk_used)/1024).toFixed(2)} / \${(parseFloat(data.disk_total)/1024).toFixed(2)} GiB\`;

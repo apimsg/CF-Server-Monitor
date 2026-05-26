@@ -110,6 +110,8 @@ export async function handleDashboard(request, env, sys) {
         const disk = parseFloat(server.disk || 0).toFixed(1);
         const netInSpeed = formatBytes(server.net_in_speed);
         const netOutSpeed = formatBytes(server.net_out_speed);
+        const monthlyRx = formatBytes(server.monthly_rx);
+        const monthlyTx = formatBytes(server.monthly_tx);
         
         const cCode = (server.country || 'xx').toLowerCase();
         const flagHtml = cCode !== 'xx' 
@@ -196,6 +198,11 @@ export async function handleDashboard(request, env, sys) {
                 <span class="net-down">▼ ${netInSpeed}/s</span>
                 <span class="net-up">▲ ${netOutSpeed}/s</span>
               </div>
+              <div class="stat-row traffic-stats">
+                <span class="stat-key">TRAFFIC</span>
+                <span class="net-down">▼ ${monthlyRx}</span>
+                <span class="net-up">▲ ${monthlyTx}</span>
+              </div>
             </div>
             
             ${pingHtml}
@@ -233,6 +240,8 @@ export async function handleDashboard(request, env, sys) {
             </td>
             <td>${netInSpeed}/s</td>
             <td>${netOutSpeed}/s</td>
+            <td>${monthlyRx}</td>
+            <td>${monthlyTx}</td>
             <td class="update-time">${Math.round((now - lastUpdated)/1000)}s ago</td>
           </tr>`;
       }
@@ -832,7 +841,7 @@ export async function handleDashboard(request, env, sys) {
         dashboard — ${sys.site_title}
       </div>
       <div style="color: var(--text-muted); font-size: 11px;">
-        ${new Date().toLocaleString()}
+        ${new Date().toLocaleString(undefined, { hour12: false })}
       </div>
     </div>
     
@@ -906,11 +915,13 @@ export async function handleDashboard(request, env, sys) {
               <th>DISK</th>
               <th>↓ DL</th>
               <th>↑ UL</th>
+              <th>↓ RX</th>
+              <th>↑ TX</th>
               <th>UPDATE</th>
             </tr>
           </thead>
           <tbody id="ajax-table">
-            ${tableBodyHtml || '<tr><td colspan="10" style="text-align:center; color:var(--text-muted);">[*] No data available</td></tr>'}
+            ${tableBodyHtml || '<tr><td colspan="12" style="text-align:center; color:var(--text-muted);">[*] No data available</td></tr>'}
           </tbody>
         </table>
       </div>
