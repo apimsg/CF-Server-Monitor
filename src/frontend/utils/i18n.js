@@ -281,7 +281,10 @@ const translations = reactive({
     tgBotTokenRequired: 'Telegram Bot Token is required when notifications are enabled',
     sendTestNotification: 'Send Test',
     testNotificationSent: 'Test notification sent successfully. Remember to save.',
-    testNotificationFailed: 'Failed to send test notification'
+    testNotificationFailed: 'Failed to send test notification',
+    saveSuccess: 'Settings saved successfully',
+    serverEdited: 'Server updated successfully',
+    serversDeleted: 'Servers deleted successfully'
   },
   zh: {
     collectInterval: '采集间隔（秒）',
@@ -562,7 +565,10 @@ const translations = reactive({
     tgBotTokenRequired: '启用通知时必须填写 Telegram Bot Token',
     sendTestNotification: '发送测试',
     testNotificationSent: '测试通知发送成功，注意保存',
-    testNotificationFailed: '测试通知发送失败'
+    testNotificationFailed: '测试通知发送失败',
+    saveSuccess: '设置保存成功',
+    serverEdited: '服务器更新成功',
+    serversDeleted: '服务器批量删除成功'
   }
 })
 

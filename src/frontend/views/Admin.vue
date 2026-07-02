@@ -919,6 +919,33 @@
         </div>
       </div>
 
+      <div v-if="saveResult" class="modal-overlay active">
+        <div class="modal-dialog">
+          <div class="modal-header">
+            <div class="modal-title">$ save --result</div>
+            <button class="modal-close" @click="saveResult = null">✕</button>
+          </div>
+
+          <div v-if="saveResult.success" class="success-box mb-4">
+            <div class="flex-center-gap-sm">
+              <span style="color: var(--accent-green); font-weight: 600;">
+                ✅ {{ saveResult.message || trans.saveSuccess }}
+              </span>
+            </div>
+          </div>
+
+          <div v-else class="danger-box mb-4">
+            <div class="flex-center-gap-sm">
+              <span class="danger-label">❌ {{ saveResult.error }}</span>
+            </div>
+          </div>
+
+          <div class="modal-footer flex-justify-end">
+            <button @click="saveResult = null" class="btn">{{ trans.close }}</button>
+          </div>
+        </div>
+      </div>
+
       <Footer />
     </div>
   </div>
@@ -1068,6 +1095,8 @@ const d1UsageResult = ref(null)
 const validationError = ref(null)
 
 const testNotificationLoading = ref(false)
+
+const saveResult = ref(null)
 
 const showCopyModal = ref(false)
 const copyServerId = ref('')
@@ -1397,6 +1426,7 @@ const saveSettings = async () => {
     }
 
     saving.value = true
+    saveResult.value = null
 
     const data = {
       action: 'save_settings',
@@ -1443,13 +1473,16 @@ const saveSettings = async () => {
     try {
       const result = await adminApiForSite(data)
       if (!result.error) {
-        alert(getMessage(result.data.message) || 'Success')
-        location.reload()
+        saveResult.value = { success: true }
+        settings.value.password = ''
+        settings.value.confirm_password = ''
+        settings.value.jwt_secret = ''
+        loadSettings()
       } else {
-        alert(getMessage(result.error) || 'Fail')
+        saveResult.value = { success: false, error: getMessage(result.error) || 'fail' }
       }
     } catch (e) {
-      alert('Fail: ' + e.message)
+      saveResult.value = { success: false, error: e.message }
     } finally {
       saving.value = false
     }
@@ -1478,13 +1511,15 @@ const addServer = async () => {
     try {
       const result = await adminApiForSite({ action: 'add', name, server_group: newServerGroup.value })
       if (!result.error) {
-        alert(getMessage(result.data.message) || 'Success')
-        location.reload()
+        saveResult.value = { success: true, message: getMessage(result.data.message) || trans.value.serverAdded }
+        newServerName.value = ''
+        newServerGroup.value = ''
+        loadServers()
       } else {
-        alert(getMessage(result.error) || 'Fail')
+        saveResult.value = { success: false, error: getMessage(result.error) || 'Fail' }
       }
     } catch (e) {
-      alert('Fail: ' + e.message)
+      saveResult.value = { success: false, error: e.message }
     }
   }
 
@@ -1638,13 +1673,14 @@ const saveEdit = async () => {
     try {
       const result = await adminApiForSite(data)
       if (!result.error) {
-        alert(getMessage(result.data.message) || 'Success')
-        location.reload()
+        saveResult.value = { success: true, message: getMessage(result.data.message) || trans.value.serverEdited }
+        showEditModal.value = false
+        loadServers()
       } else {
-        alert(getMessage(result.error) || 'Fail')
+        saveResult.value = { success: false, error: getMessage(result.error) || 'Fail' }
       }
     } catch (e) {
-      alert('Fail: ' + e.message)
+      saveResult.value = { success: false, error: e.message }
     }
   }
 
@@ -1661,13 +1697,14 @@ const saveEdit = async () => {
     try {
       const result = await adminApiForSite({ action: 'delete', id: deleteServerId.value })
       if (!result.error) {
-        alert(getMessage(result.data.message) || 'Success')
-        location.reload()
+        saveResult.value = { success: true, message: getMessage(result.data.message) || trans.value.serverDeleted }
+        showDeleteModal.value = false
+        loadServers()
       } else {
-        alert(getMessage(result.error) || 'Fail')
+        saveResult.value = { success: false, error: getMessage(result.error) || 'Fail' }
       }
     } catch (e) {
-      alert('Fail: ' + e.message)
+      saveResult.value = { success: false, error: e.message }
     }
   }
 
@@ -1678,13 +1715,14 @@ const saveEdit = async () => {
     try {
       const result = await adminApiForSite({ action: 'batch_delete', ids: selectedServers.value })
       if (!result.error) {
-        alert(getMessage(result.data.message) || 'Success')
-        location.reload()
+        saveResult.value = { success: true, message: getMessage(result.data.message) || trans.value.serversDeleted }
+        selectedServers.value = []
+        loadServers()
       } else {
-        alert(getMessage(result.error) || 'Fail')
+        saveResult.value = { success: false, error: getMessage(result.error) || 'Fail' }
       }
     } catch (e) {
-      alert('Fail: ' + e.message)
+      saveResult.value = { success: false, error: e.message }
     }
   }
 
@@ -1762,12 +1800,6 @@ const handleUpgradeDatabase = async () => {
   try {
     const result = await upgradeDatabase(selectedApiIndex.value)
     dbResult.value = result
-    if (result.success) {
-      setTimeout(() => {
-        showDbModal.value = false
-        location.reload()
-      }, 1500)
-    }
   } catch (e) {
     dbResult.value = { success: false, error: e.message }
   } finally {
@@ -1783,12 +1815,6 @@ const handleRebuildDatabase = async () => {
   try {
     const result = await rebuildDatabase(selectedApiIndex.value)
     dbResult.value = result
-    if (result.success) {
-      setTimeout(() => {
-        showDbModal.value = false
-        location.reload()
-      }, 1500)
-    }
   } catch (e) {
     dbResult.value = { success: false, error: e.message }
   } finally {
