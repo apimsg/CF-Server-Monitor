@@ -256,6 +256,31 @@ log_warn_debug() {
     [ "$DEBUG_MODE" = "1" ] && echo "[WARN] $(log_ts) $*"
 }
 
+# 动态检测 stdout 指向的日志文件
+PROBE_LOG_FILE=""
+if [ -L /proc/self/fd/1 ]; then
+    _log_target=$(readlink /proc/self/fd/1 2>/dev/null || echo "")
+    [ -f "$_log_target" ] && [ -w "$_log_target" ] && PROBE_LOG_FILE="$_log_target"
+fi
+
+rotate_log_if_needed() {
+    [ -f "$1" ] || return 0
+    local _sz
+    _sz=$(wc -c < "$1" 2>/dev/null || echo 0)
+    [ "${_sz:-0}" -gt 1048576 ] || return 0
+    local _lines
+    _lines=$(wc -l < "$1" 2>/dev/null || echo 0)
+    if [ "${_lines}" -eq 1 ]; then
+        : > "$1" 2>/dev/null
+        return 0
+    fi
+    local _tmp="${1}.rot.$$"
+    tail -c 102400 "$1" > "$_tmp" 2>/dev/null || { rm -f "$_tmp"; return 0; }
+    : > "$1" 2>/dev/null
+    cat "$_tmp" >> "$1" 2>/dev/null || true
+    rm -f "$_tmp" 2>/dev/null || true
+}
+
 persist_dynamic_config() {
     local tmp_file="${CONFIG_FILE}.tmp.$$"
     awk -v collect="$1" -v report="$2" -v reset="$3" -v md5="$4" -v ct="$5" -v cu="$6" -v cm="$7" -v bd="$8" '
@@ -630,13 +655,14 @@ get_time_ms() {
     ts=$(date +%s%3N 2>/dev/null || true)
     case "${ts}" in
         ''|*[!0-9]*) ;;
-        ?????????????*) echo "${ts}"; return 0 ;;
+        ?????????????) echo "${ts}"; return 0 ;;
+        ??????????????*) echo "${ts:0:13}"; return 0 ;;
     esac
 
     ts=$(date +%s%N 2>/dev/null || true)
     case "${ts}" in
         ''|*[!0-9]*) ;;
-        ????????????????*) echo "${ts%??????}"; return 0 ;;
+        ???????????????????) echo "${ts:0:13}"; return 0 ;;
     esac
 
     if command -v perl >/dev/null 2>&1; then
@@ -778,7 +804,8 @@ LAST_REPORT_TIME=0
 
 while true; do
     LOOP_START_TIME=$(date +%s)
-    
+    rotate_log_if_needed "$PROBE_LOG_FILE"
+
     # Worker 进程健康检查与自动重启
     if ! kill -0 "$WORKER_PID" 2>/dev/null; then
         run_network_worker &

@@ -183,6 +183,31 @@ log_warn_debug() {
     [ "$DEBUG_MODE" = "1" ] && echo "[WARN] $(log_ts) $*"
 }
 
+# 动态检测 stdout 指向的日志文件
+PROBE_LOG_FILE=""
+if [ -L /dev/fd/1 ]; then
+    _log_target=$(readlink /dev/fd/1 2>/dev/null || echo "")
+    [ -f "$_log_target" ] && [ -w "$_log_target" ] && PROBE_LOG_FILE="$_log_target"
+fi
+
+rotate_log_if_needed() {
+    [ -f "$1" ] || return 0
+    local _sz
+    _sz=$(wc -c < "$1" 2>/dev/null || echo 0)
+    [ "${_sz:-0}" -gt 1048576 ] || return 0
+    local _lines
+    _lines=$(wc -l < "$1" 2>/dev/null || echo 0)
+    if [ "${_lines}" -eq 1 ]; then
+        : > "$1" 2>/dev/null
+        return 0
+    fi
+    local _tmp="${1}.rot.$$"
+    tail -c 102400 "$1" > "$_tmp" 2>/dev/null || { rm -f "$_tmp"; return 0; }
+    : > "$1" 2>/dev/null
+    cat "$_tmp" >> "$1" 2>/dev/null || true
+    rm -f "$_tmp" 2>/dev/null || true
+}
+
 persist_dynamic_config() {
     local tmp_file="${CONFIG_FILE}.tmp.$$"
     awk -v collect="$1" -v report="$2" -v reset="$3" -v md5="$4" -v ct="$5" -v cu="$6" -v cm="$7" -v bd="$8" '
@@ -506,27 +531,25 @@ EOF
 }
 
 get_cpu_stat() {
-    # 使用 sysctl 获取 CPU ticks，避免 top -l 2 耗时 3-5 秒
     local cpu_ticks
     cpu_ticks=$(sysctl -n kern.cp_time 2>/dev/null || echo "")
     if [ -n "$cpu_ticks" ]; then
-        # kern.cp_time 格式: user nice system interrupt idle (ticks)
-        local user nice sys intr idle
+        local user nice sys intr idle total
         user=$(echo "$cpu_ticks" | awk '{print $1}')
         nice=$(echo "$cpu_ticks" | awk '{print $2}')
         sys=$(echo "$cpu_ticks" | awk '{print $3}')
         intr=$(echo "$cpu_ticks" | awk '{print $4}')
         idle=$(echo "$cpu_ticks" | awk '{print $5}')
-        local total=$((user + nice + sys + intr + idle))
-        # 保存上次的值用于差值计算
-        local prev_total_file="/tmp/cf-probe/.cf_cpu_total"
-        local prev_idle_file="/tmp/cf-probe/.cf_cpu_idle"
+        total=$((user + nice + sys + intr + idle))
+        local prev_file="/tmp/cf-probe/.cf_cpu_prev"
         local prev_total=0 prev_idle=0
-        [ -f "$prev_total_file" ] && prev_total=$(cat "$prev_total_file" 2>/dev/null || echo 0)
-        [ -f "$prev_idle_file" ] && prev_idle=$(cat "$prev_idle_file" 2>/dev/null || echo 0)
+        if [ -f "$prev_file" ]; then
+            local prev=$(cat "$prev_file" 2>/dev/null || echo "0 0")
+            prev_total=${prev%% *}
+            prev_idle=${prev##* }
+        fi
         mkdir -p /tmp/cf-probe 2>/dev/null || true
-        echo "$total" > "$prev_total_file"
-        echo "$idle" > "$prev_idle_file"
+        echo "$total $idle" > "${prev_file}.tmp" && mv "${prev_file}.tmp" "$prev_file" 2>/dev/null || true
         local diff_total=$((total - prev_total))
         local diff_idle=$((idle - prev_idle))
         if [ "$diff_total" -gt 0 ]; then
@@ -536,7 +559,6 @@ get_cpu_stat() {
             echo "0.00"
         fi
     else
-        # fallback: 使用 top -l 1（单次采样，约 1 秒）
         top -l 1 -n 0 2>/dev/null | grep "CPU usage" | tail -1 | awk '{
             split($3, user, "%");
             split($5, sys, "%");
@@ -707,13 +729,14 @@ get_time_ms() {
     ts=$(date +%s%3N 2>/dev/null || true)
     case "${ts}" in
         ''|*[!0-9]*) ;;
-        ?????????????*) echo "${ts}"; return 0 ;;
+        ?????????????) echo "${ts}"; return 0 ;;
+        ??????????????*) echo "${ts:0:13}"; return 0 ;;
     esac
 
     ts=$(date +%s%N 2>/dev/null || true)
     case "${ts}" in
         ''|*[!0-9]*) ;;
-        ????????????????*) echo "${ts%??????}"; return 0 ;;
+        ???????????????????) echo "${ts:0:13}"; return 0 ;;
     esac
 
     if command -v perl >/dev/null 2>&1; then
@@ -879,7 +902,8 @@ LAST_REPORT_TIME=0
 
 while true; do
     LOOP_START_TIME=$(date +%s)
-    
+    rotate_log_if_needed "$PROBE_LOG_FILE"
+
     if ! kill -0 "${WORKER_PID}" 2>/dev/null; then
         run_network_worker &
         WORKER_PID=$!
@@ -993,18 +1017,8 @@ while true; do
     ECPU=$(escape_json "${CPU_INFO}")
     ELOAD=$(escape_json "${LOAD_AVG}")
     
-    EPING_CT=$(escape_json "${PING_CT}")
-    EPING_CU=$(escape_json "${PING_CU}")
-    EPING_CM=$(escape_json "${PING_CM}")
-    EPING_BD=$(escape_json "${PING_BD}")
-    
-    ELOSS_CT=$(escape_json "${LOSS_CT}")
-    ELOSS_CU=$(escape_json "${LOSS_CU}")
-    ELOSS_CM=$(escape_json "${LOSS_CM}")
-    ELOSS_BD=$(escape_json "${LOSS_BD}")
-
     METRICS_JSON=$(cat <<EOF
-{"cpu":"${CPU}","ram_total":"${RAM_TOTAL}","ram_used":"${RAM_USED}","swap_total":"${SWAP_TOTAL}","swap_used":"${SWAP_USED}","disk_total":"${DISK_TOTAL}","disk_used":"${DISK_USED}","load_avg":"${ELOAD}","boot_time":"${BOOT_TIME}","net_rx":"${RX_NOW}","net_tx":"${TX_NOW}","net_rx_monthly":"${RX_MONTHLY}","net_tx_monthly":"${TX_MONTHLY}","net_in_speed":"${RX_SPEED}","net_out_speed":"${TX_SPEED}","os":"${EOS}","arch":"${EARCH}","cpu_info":"${ECPU}","cpu_cores":"${CPU_CORES}","gpu":${GPU},"gpu_info":${GPU_INFO_VALUE},"processes":"${PROCESSES}","tcp_conn":"${TCP_CONN}","udp_conn":"${UDP_CONN}","ip_v4":"${IPV4}","ip_v6":"${IPV6}","ping_ct":"${EPING_CT}","ping_cu":"${EPING_CU}","ping_cm":"${EPING_CM}","ping_bd":"${EPING_BD}","loss_ct":"${ELOSS_CT}","loss_cu":"${ELOSS_CU}","loss_cm":"${ELOSS_CM}","loss_bd":"${ELOSS_BD}"}
+{"cpu":"${CPU}","ram_total":"${RAM_TOTAL}","ram_used":"${RAM_USED}","swap_total":"${SWAP_TOTAL}","swap_used":"${SWAP_USED}","disk_total":"${DISK_TOTAL}","disk_used":"${DISK_USED}","load_avg":"${ELOAD}","boot_time":"${BOOT_TIME}","net_rx":"${RX_NOW}","net_tx":"${TX_NOW}","net_rx_monthly":"${RX_MONTHLY}","net_tx_monthly":"${TX_MONTHLY}","net_in_speed":"${RX_SPEED}","net_out_speed":"${TX_SPEED}","os":"${EOS}","arch":"${EARCH}","cpu_info":"${ECPU}","cpu_cores":"${CPU_CORES}","gpu":${GPU},"gpu_info":${GPU_INFO_VALUE},"processes":"${PROCESSES}","tcp_conn":"${TCP_CONN}","udp_conn":"${UDP_CONN}","ip_v4":"${IPV4}","ip_v6":"${IPV6}","ping_ct":"${PING_CT}","ping_cu":"${PING_CU}","ping_cm":"${PING_CM}","ping_bd":"${PING_BD}","loss_ct":"${LOSS_CT}","loss_cu":"${LOSS_CU}","loss_cm":"${LOSS_CM}","loss_bd":"${LOSS_BD}"}
 EOF
 )
     if [ "${COLLECT_INTERVAL}" -gt 0 ]; then

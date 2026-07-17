@@ -112,8 +112,7 @@ $DEFAULT_CM = "gd-cm-dualstack.ip.zstaticcdn.com"
 $DEFAULT_BD = "lf3-ips.zstaticcdn.com"
 $MAX_TRAFFIC_CORRECTION_GB = 1000000
 
-$MAX_LOG_SIZE = 2MB
-$LOG_BACKUP_COUNT = 3
+$MAX_LOG_SIZE = 1MB
 
 # ============================================================
 # 工具函数
@@ -127,17 +126,25 @@ function Write-Log {
         if (Test-Path $LOG_FILE) {
             $size = (Get-Item $LOG_FILE).Length
             if ($size -gt $MAX_LOG_SIZE) {
-                for ($i = $LOG_BACKUP_COUNT - 1; $i -ge 1; $i--) {
-                    $src = Join-Path $CONFIG_DIR "cf_probe.log.$i"
-                    $dst = Join-Path $CONFIG_DIR "cf_probe.log.$($i+1)"
-                    if (Test-Path $src) {
-                        if (Test-Path $dst) { Remove-Item $dst -Force }
-                        Rename-Item $src $dst
+                $lines = [System.IO.File]::ReadAllLines($LOG_FILE, [System.Text.Encoding]::UTF8)
+                if ($lines.Length -gt 0) {
+                    $targetSize = 102400
+                    $totalBytes = 0
+                    $keepCount = 0
+                    for ($i = $lines.Length - 1; $i -ge 0; $i--) {
+                        $lineBytes = [System.Text.Encoding]::UTF8.GetByteCount($lines[$i] + "`r`n")
+                        if ($totalBytes + $lineBytes -gt $targetSize) { break }
+                        $totalBytes += $lineBytes
+                        $keepCount++
+                    }
+                    if ($keepCount -eq 0) { $keepCount = 1 }
+                    if ($keepCount -gt 0 -and $keepCount -lt $lines.Length) {
+                        $startIdx = $lines.Length - $keepCount
+                        $keepLines = New-Object string[] $keepCount
+                        [Array]::Copy($lines, $startIdx, $keepLines, 0, $keepCount)
+                        [System.IO.File]::WriteAllLines($LOG_FILE, $keepLines, [System.Text.Encoding]::UTF8)
                     }
                 }
-                $backup = Join-Path $CONFIG_DIR "cf_probe.log.1"
-                if (Test-Path $backup) { Remove-Item $backup -Force }
-                Rename-Item $LOG_FILE $backup
             }
         }
         [System.IO.File]::AppendAllText($LOG_FILE, $line + "`r`n", [System.Text.Encoding]::UTF8)
@@ -1401,10 +1408,6 @@ function Uninstall-Service {
     if (Test-Path $CONFIG_FILE) { Remove-Item $CONFIG_FILE -Force }
     if (Test-Path $TRAFFIC_FILE) { Remove-Item $TRAFFIC_FILE -Force }
     if (Test-Path $LOG_FILE) { Remove-Item $LOG_FILE -Force }
-    for ($i = 1; $i -le $LOG_BACKUP_COUNT; $i++) {
-        $backup = Join-Path $CONFIG_DIR "cf_probe.log.$i"
-        if (Test-Path $backup) { Remove-Item $backup -Force }
-    }
 
     Write-Host "卸载完成。" -ForegroundColor Green
 }
