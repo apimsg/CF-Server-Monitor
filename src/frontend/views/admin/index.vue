@@ -448,6 +448,7 @@ import { adminApi, login, logout as apiLogout, upgradeDatabase, clearHistory, ge
 import { hasMultipleApiBases } from '../../utils/config.js'
 import { t, useTranslation } from '../../utils/i18n'
 import { PING_NODE_FIELDS, validatePingNode } from '../../utils/pingNode.js'
+import { normalizeDisplayMode, resolveDisplayMode } from '../../utils/displayMode.js'
 import { usePasswordVisibility } from '../../composables/usePasswordVisibility'
 import { useTurnstile } from './composables/useTurnstile'
 
@@ -513,6 +514,7 @@ const settings = ref({
   custom_bg: '',
   custom_head: '',
   custom_script: '',
+  display_mode: 'bar',
   is_public: false,
   show_price: true,
   show_expire: true,
@@ -823,6 +825,7 @@ const loadSettings = async () => {
         custom_bg: settingsData.custom_bg || '',
         custom_head: settingsData.custom_head || '',
         custom_script: settingsData.custom_script || '',
+        display_mode: resolveDisplayMode(settingsData),
         is_public: settingsData.is_public === 'true',
         show_price: settingsData.show_price === 'true',
         show_expire: settingsData.show_expire === 'true',
@@ -933,6 +936,7 @@ const saveSettings = async () => {
       custom_bg: settings.value.custom_bg,
       custom_head: settings.value.custom_head,
       custom_script: settings.value.custom_script,
+      display_mode: normalizeDisplayMode(settings.value.display_mode),
       is_public: settings.value.is_public ? 'true' : 'false',
       show_price: settings.value.show_price ? 'true' : 'false',
       show_expire: settings.value.show_expire ? 'true' : 'false',
